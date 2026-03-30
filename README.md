@@ -1,47 +1,86 @@
-# 🎤 Jarvis — Clap-Activated Browser Automation
+# Jarvis - Clap-Activated Browser Automation
 
-A Python script that listens to your microphone and detects clap patterns to automate browser actions.
+Jarvis is a Python script that listens to your microphone, detects clap patterns in real time, and triggers browser actions.
 
-| Pattern | Action |
+## Clap Actions
+
+| Clap pattern | Action |
 |---|---|
-| **Single clap** | Opens [ChatGPT](https://chat.openai.com) |
-| **Double clap** | Opens [YouTube](https://www.youtube.com) |
-| **Triple clap** | Opens browser homepage |
+| Single clap | Open ChatGPT (`https://chatgpt.com/`) |
+| Double clap | Open YouTube (`https://www.youtube.com`) |
+| Triple clap | Open browser homepage (`about:blank`) |
 
-## Quick Start
+Action mapping is defined in the `ACTIONS` dictionary inside `jarvis.py`.
 
-```bash
-# 1. Install dependencies
-pip install -r requirements.txt
+## Detection Overview
 
-# 2. Run Jarvis
-python jarvis.py
+For each 25 ms audio chunk, Jarvis extracts acoustic features and scores clap confidence.
 
-# 3. Clap near your mic! Press Ctrl+C to stop.
-```
+Pipeline:
 
-## Tuning Sensitivity
+1. Energy gate (RMS above calibrated threshold)
+2. Feature extraction (crest factor, spectral flatness, centroid, band energy ratio, zero-crossing rate, kurtosis)
+3. Confidence scoring (weighted multi-feature score)
+4. Pattern grouping inside a clap window
+5. Action dispatch with cooldown
 
-Open `jarvis.py` and adjust these constants at the top:
-
-| Constant | Default | Description |
-|---|---|---|
-| `THRESHOLD` | `0.4` | Amplitude spike needed to register a clap (0.0–1.0). **Raise** if too many false positives; **lower** if claps aren't picked up. |
-| `CLAP_WINDOW` | `1.5` s | Time window to group claps into a pattern. |
-| `MIN_CLAP_INTERVAL` | `0.08` s | Debounce gap — ignores echo/re-triggers within this time. |
-| `ACTION_COOLDOWN` | `2.0` s | Cooldown after a browser action fires. |
-
-## Troubleshooting
-
-| Issue | Fix |
-|---|---|
-| `PortAudioError` | Make sure a microphone is connected and your OS has granted mic permissions. |
-| Nothing detected | Lower `THRESHOLD` (e.g. `0.2`). |
-| False positives | Raise `THRESHOLD` (e.g. `0.6`), or increase `MIN_CLAP_INTERVAL`. |
-| Wrong URLs | Edit the `ACTIONS` dictionary in `jarvis.py`. |
+The RMS threshold is auto-calibrated and periodically adapted, so there is no fixed hardcoded threshold constant.
 
 ## Requirements
 
 - Python 3.10+
-- A working microphone
-- Windows (primary), macOS / Linux also supported
+- Microphone input available to the system
+- Packages listed in `requirements.txt`:
+	- `sounddevice`
+	- `numpy`
+	- `scipy`
+
+## Installation
+
+```bash
+pip install -r requirements.txt
+```
+
+## Run
+
+```bash
+python jarvis.py
+```
+
+On startup, Jarvis:
+
+1. Samples ambient audio for calibration (`CALIBRATION_SECONDS`)
+2. Computes a fused spike factor (Neyman-Pearson + empirical SNR + percentile method)
+3. Prints a calibration report and starts listening
+
+Press `Ctrl+C` to stop.
+
+## Main Configuration (jarvis.py)
+
+These are the key tunables in the script:
+
+- `SAMPLE_RATE = 44100`
+- `CHUNK_DURATION = 0.025`
+- `CALIBRATION_SECONDS = 3.0`
+- `CLAP_WINDOW = 0.75`
+- `MIN_CLAP_GAP = 0.10`
+- `ACTION_COOLDOWN = 2.0`
+- `ADAPT_INTERVAL = 10.0`
+- `MIN_CONFIDENCE = 0.20`
+- `CLAP_BAND_LO = 1000`
+- `CLAP_BAND_HI = 6000`
+- `TARGET_PFA = 1e-4`
+
+## Troubleshooting
+
+| Issue | What to do |
+|---|---|
+| `PortAudioError` | Check that a microphone is connected and OS mic permission is enabled. |
+| Claps not detected | Decrease `MIN_CONFIDENCE` slightly or increase `CALIBRATION_SECONDS` for better baseline estimation. |
+| Too many false detections | Increase `MIN_CONFIDENCE`, increase `MIN_CLAP_GAP`, or reduce room noise during calibration. |
+| Wrong site opens | Update URL/action entries in `ACTIONS` in `jarvis.py`. |
+
+## Notes
+
+- If more than 3 claps are detected in a window, no browser action is mapped by default.
+- If actions fire too quickly, `ACTION_COOLDOWN` prevents immediate retriggering.
